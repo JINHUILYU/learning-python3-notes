@@ -25,9 +25,12 @@ config.rst
 
 package-lock.json
 geckodriver.log
-*.iml
 ~*
 .~*
 *.pdf
 *.xls
 *.zip
+
+.mnist/
+.checkpoints/
+.data/
