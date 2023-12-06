@@ -34,3 +34,4 @@ geckodriver.log
 .mnist/
 .checkpoints/
 .data/
+*.pth

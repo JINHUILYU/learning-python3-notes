@@ -1,0 +1,215 @@
+#include <iostream>
+#include <cstring>
+#include <algorithm>
+
+using namespace std;
+
+const int N = 1010;
+
+typedef struct {
+    int id;  //任务编号
+    int out;  //任务出度
+    int in;  //依赖的任务数量
+    int priority;  //任务优先级
+    int r_time;  //任务释放时间
+    int e_time;  //任务执行时间
+    bool visit;  //标记是否已遍历
+    int processor;    //执行任务的处理器
+} Task;
+
+typedef struct {
+    int id;  //处理器ID
+    int e_time;  //处理器使用时间
+    int w_time;  //处理器等待时间
+    bool is_available;    //处理器是否空闲
+    int end_time;    //处理器执行任务结束的时间
+    int task;   //正在执行的任务
+} Processor;
+
+int n;  //任务数量
+int h[N][N];  //依赖关系矩阵
+int k;  //处理器数量
+int max_execution = 0;  //处理器最大执行时间即系统完工时间
+
+void add_opri(Task *tasks, int i) {
+    //优先级已计算，直接返回
+    if (tasks[i].visit) return;
+    tasks[i].visit = true;  //设置该任务的优先级已计算
+    int max_p = 0;
+    for (int j = 0; j < n; j++) {
+        //任务j是任务i的后继点
+        if (h[i][j] == 1) {
+            //找出优先级最大的直接后继点
+            add_opri(tasks, j);
+            if (tasks[j].priority > max_p) {
+                max_p = tasks[j].priority;
+            }
+        }
+    }
+    tasks[i].priority = tasks[i].e_time + tasks[i].out + max_p;
+    return;
+}
+
+int comp(void const *a, void const *b) {
+    Task *task_a = (Task *) a;
+    Task *task_b = (Task *) b;
+    if (task_b->priority == task_a->priority) {
+        if (task_a->r_time == task_b->r_time) {
+            if (task_a->e_time == task_b->e_time) {
+                //优先级一样，按照释放时间从早到晚排序
+                return task_a->id - task_b->id;
+            } else {
+                //优先级和释放时间一样，按执行时间从大到小排序
+                return task_b->e_time - task_a->e_time;
+            }
+        } else {
+            //优先级一样，按照释放时间从早到晚排序
+            return task_a->r_time - task_b->r_time;
+        }
+    }
+    //优先级大的在前
+    return task_b->priority - task_a->priority;
+}
+
+void task_sort(Task *tasks, int n) {
+    //1、按任务优先级进行排序
+    //2、如果任务优先级相等，依次比较任务释放时间，执行时间和编号
+    qsort(tasks, n, sizeof(Task), comp);
+}
+
+void processor_allocation(Task *tasks, Processor *processors, int n, int k) {
+    int time = 0;  //记录时刻
+    int idle = 0;  //记录空闲的处理器数
+    int task_completed = 0;  //记录已完成任务数量
+    while (true) {
+        //把执行完任务的处理器设为空闲
+        for (int i = 0; i < k; i++) {
+            if (processors[i].end_time == time) {
+                processors[i].is_available = true;
+                //任务结束，把结束的任务的后继任务依赖减一
+                int task = processors[i].task;
+                for (int j = i; j < n; j++) {
+                    if (h[task - 1][tasks[j].id - 1] == 1) {
+                        tasks[j].in--;
+                    }
+                }
+                processors[i].w_time = 0;
+                processors[i].task = 0;
+                idle++;
+            }
+        }
+        //如果任务都执行完了且所有处理器都空闲就结束啦
+        if (task_completed == n && idle == k) {
+            max_execution = time;
+            break;
+        }
+        //有空闲的处理器找任务执行
+        while (idle != 0) {
+            //找所有前驱执行完毕(in==0)，且优先级最高且释放时间已到的任务
+            int cur_task = -1;  //记录即将执行的任务
+            for (int i = 0; i < n; i++) {
+                if (tasks[i].processor == -1 && tasks[i].in == 0 && tasks[i].r_time <= time) {
+                    //找到就结束寻找
+                    cur_task = i;
+                    break;
+                }
+            }
+            //如果有可以执行的任务,就为它分配处理器
+            if (cur_task != -1) {
+                task_completed++;
+                //找空闲时间最长且可以分配的处理器
+                int max_WTime = -1; //空闲时间最长即执行时间最短
+                int cur_processor = 0;
+                for (int i = 0; i < k; i++) {
+                    if (processors[i].w_time > max_WTime && processors[i].is_available) {
+                        max_WTime = processors[i].w_time;
+                        cur_processor = i;
+                    }
+                }
+                tasks[cur_task].processor = processors[cur_processor].id;
+                processors[cur_processor].end_time = tasks[cur_task].e_time + time;
+                processors[cur_processor].task = tasks[cur_task].id;
+                processors[cur_processor].e_time += tasks[cur_task].e_time;
+                processors[cur_processor].is_available = false;
+                idle--;
+            } else {
+                for (int i = 0; i < n; i++) {
+                    if (processors[i].is_available) {
+                        processors[i].w_time++;
+                    }
+                }
+                break;
+            }
+        }
+        time++;
+        cout << endl;
+    }
+}
+
+int main() {
+    cout << "Number of tasks:";
+    cin >> n;
+    cout << "Number of processors:";
+    cin >> k;
+    Task *tasks = (Task *) malloc(n * sizeof(Task));
+    auto *processors = (Processor *) malloc(k * sizeof(Processor));
+    memset(h, -1, sizeof(h)); //初始化邻接表
+
+    cout << "Release time:";
+    for (int i = 0; i < n; i++) {
+        tasks[i].id = i + 1;  //初始化任务的编号
+        tasks[i].out = 0;  //初始化任务出度为0
+        tasks[i].in = 0;  //初始化任务依赖数为0
+        tasks[i].visit = false;   //初始化任务优先级未计算
+        tasks[i].processor = -1;  //初始化未分配处理器
+        cin >> tasks[i].r_time;
+    }
+
+    cout << "Run time:";
+    for (int i = 0; i < n; i++) {
+        cin >> tasks[i].e_time;
+    }
+    int m; // m条边
+    cout << "Number of edges:";
+    cin >> m;
+    cout << "Relation:";
+    for (int i = 0; i < m; i++) {
+        int x, y;
+        cin >> x >> y;
+        h[x - 1][y - 1] = 1;
+        tasks[x - 1].out++;
+        tasks[y - 1].in++;
+    }
+    cout << "------------------------------------------" << endl;
+    //计算优先级
+    for (int i = 0; i < n; i++) {
+        add_opri(tasks, i);
+    }
+    //使用任务优先级排序算法 TaPSA 构建任务优先级表
+    task_sort(tasks, n);
+    //将处理器初始化并将任务分配到处理器上执行
+    for (int i = 0; i < k; i++) {
+        //初始化处理器
+        processors[i].id = i + 1;
+        processors[i].e_time = 0;
+        processors[i].w_time = 0;
+        processors[i].end_time = 0;
+        processors[i].task = 0;
+    }
+    processor_allocation(tasks, processors, n, k);
+    for (int i = 0; i < k; i++) {
+        cout << "P" << i + 1 << ":";
+        for (int j = 0; j < n; j++) {
+
+            if (tasks[j].processor == processors[i].id) {
+                cout << tasks[j].id << " ";
+            }
+        }
+        cout << endl;
+        double rate;
+        rate = double(processors[i].e_time) / double(max_execution) * 100;
+        cout << "Processor:" << i + 1 << " Usage ratio:" << rate << "%" << endl;
+    }
+    free(tasks);
+    return 0;
+}
